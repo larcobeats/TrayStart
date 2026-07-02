@@ -16,21 +16,28 @@ public class SettingsService
 
     public AppSettings Settings { get; private set; } = new();
 
+    private static string BackupPath => SettingsPath + ".bak";
+
     public void Load()
+    {
+        // Fall back to the last-known-good backup if the main file is missing or corrupt.
+        Settings = TryLoad(SettingsPath) ?? TryLoad(BackupPath) ?? new AppSettings();
+    }
+
+    private static AppSettings? TryLoad(string path)
     {
         try
         {
-            if (File.Exists(SettingsPath))
+            if (File.Exists(path))
             {
-                var json = File.ReadAllText(SettingsPath);
-                Settings = JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
+                return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(path));
             }
         }
         catch
         {
-            // Corrupt settings file — start fresh rather than crash.
-            Settings = new AppSettings();
+            // Missing or corrupt — caller falls through to the next candidate.
         }
+        return null;
     }
 
     public void Save()
@@ -38,7 +45,20 @@ public class SettingsService
         try
         {
             Directory.CreateDirectory(SettingsDir);
-            File.WriteAllText(SettingsPath, JsonSerializer.Serialize(Settings, JsonOptions));
+            string json = JsonSerializer.Serialize(Settings, JsonOptions);
+
+            // Atomic write: never leave a half-written settings.json, and keep the
+            // previous version as .bak so a bad write can't lose the watch list.
+            string tmp = SettingsPath + ".tmp";
+            File.WriteAllText(tmp, json);
+            if (File.Exists(SettingsPath))
+            {
+                File.Replace(tmp, SettingsPath, BackupPath);
+            }
+            else
+            {
+                File.Move(tmp, SettingsPath);
+            }
         }
         catch
         {
