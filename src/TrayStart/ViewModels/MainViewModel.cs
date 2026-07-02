@@ -116,7 +116,7 @@ public partial class MainViewModel : ObservableObject
     private void MinimizeNow()
     {
         if (SelectedApp == null) return;
-        int count = _app.Minimizer.MinimizeAllWindowsOf(SelectedApp.ExeName);
+        int count = _app.Minimizer.MinimizeAllWindowsOf(SelectedApp.ExeName, suppressIcon: SelectedApp.HasOwnTray);
         if (count == 0)
         {
             MessageBox.Show(
@@ -177,7 +177,14 @@ public partial class MainViewModel : ObservableObject
         {
             return;
         }
-        var app = new WatchedApp { ExeName = exeName, DisplayName = displayName, Enabled = true };
+        var app = new WatchedApp
+        {
+            ExeName = exeName,
+            DisplayName = displayName,
+            Enabled = true,
+            // Apps with a native tray icon don't get a duplicate TrayStart icon (user-overridable).
+            HasOwnTray = TrayIconRegistry.ExeHasOwnTrayIcon(exeName),
+        };
         app.PropertyChanged += OnWatchedAppChanged;
         WatchedApps.Add(app);
         SaveWatchedApps();

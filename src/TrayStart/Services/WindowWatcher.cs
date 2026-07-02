@@ -87,13 +87,13 @@ public class WindowWatcher : IDisposable
         }
 
         string exeName = process.ProcessName + ".exe";
-        bool isWatched = _settings.Settings.WatchedApps.Any(w =>
+        var watched = _settings.Settings.WatchedApps.FirstOrDefault(w =>
             w.Enabled && string.Equals(w.ExeName, exeName, StringComparison.OrdinalIgnoreCase));
-        if (!isWatched) return;
+        if (watched == null) return;
 
         if (!IsWithinGracePeriod(process, pid)) return;
 
-        _minimizer.MinimizeToTray(hwnd, process);
+        _minimizer.MinimizeToTray(hwnd, process, suppressIcon: watched.HasOwnTray);
     }
 
     /// <summary>

@@ -22,7 +22,7 @@
                 <TextBlock Text="{Binding VersionText}" FontSize="12" Foreground="#8A8F98"
                            VerticalAlignment="Bottom" Margin="8,0,0,4"/>
             </StackPanel>
-            <TextBlock Text="Programs in this list are automatically minimized to the tray when they start."
+            <TextBlock Text="Programs in this list are automatically minimized to the tray when they start. If an app already has its own tray icon, TrayStart won't add a duplicate — restore it from the app's own icon."
                        Foreground="#5A606B" Margin="0,4,0,0" TextWrapping="Wrap"/>
         </StackPanel>
 
@@ -43,10 +43,19 @@
                                 </DataTemplate>
                             </GridViewColumn.CellTemplate>
                         </GridViewColumn>
-                        <GridViewColumn Width="240" Header="Application"
+                        <GridViewColumn Width="190" Header="Application"
                                         DisplayMemberBinding="{Binding DisplayName}"/>
-                        <GridViewColumn Width="180" Header="Process"
+                        <GridViewColumn Width="150" Header="Process"
                                         DisplayMemberBinding="{Binding ExeName}"/>
+                        <GridViewColumn Width="110" Header="Own tray icon">
+                            <GridViewColumn.CellTemplate>
+                                <DataTemplate>
+                                    <CheckBox IsChecked="{Binding HasOwnTray, UpdateSourceTrigger=PropertyChanged}"
+                                              HorizontalAlignment="Center"
+                                              ToolTip="This app already has its own tray icon, so TrayStart hides the window without adding a duplicate icon. Use the app's own icon to bring it back."/>
+                                </DataTemplate>
+                            </GridViewColumn.CellTemplate>
+                        </GridViewColumn>
                     </GridView>
                 </ListView.View>
             </ListView>

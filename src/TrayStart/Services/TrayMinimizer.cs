@@ -15,7 +15,8 @@ public class TrayMinimizer : IDisposable
     private sealed class TrayedWindow
     {
         public required IntPtr Hwnd { get; init; }
-        public required NotifyIcon Icon { get; init; }
+        // Null when the app has its own tray icon and ours would be a duplicate.
+        public NotifyIcon? Icon { get; init; }
         public Process? Process { get; init; }
         public DateTime TrayedAt { get; } = DateTime.Now;
         public int ReHideCount { get; set; }
@@ -33,37 +34,42 @@ public class TrayMinimizer : IDisposable
 
     public bool WasRestoredByUser(IntPtr hwnd) => _restoredByUser.Contains(hwnd);
 
-    public void MinimizeToTray(IntPtr hwnd, Process process)
+    /// <param name="suppressIcon">The app has its own tray icon; hide the window but don't add a duplicate icon.</param>
+    public void MinimizeToTray(IntPtr hwnd, Process process, bool suppressIcon = false)
     {
         if (IsTrayed(hwnd)) return;
         _restoredByUser.Remove(hwnd); // an explicit tray request overrides an earlier restore
 
         string title = NativeMethods.GetWindowTitle(hwnd);
-        Icon icon = GetWindowIcon(hwnd, process);
+        Icon? icon = suppressIcon ? null : GetWindowIcon(hwnd, process);
 
         HideWindow(hwnd);
         if (NativeMethods.IsWindowVisible(hwnd))
         {
             // Hide was blocked (e.g. elevated window and we're not) — don't orphan a tray icon.
-            icon.Dispose();
+            icon?.Dispose();
             return;
         }
 
-        var notifyIcon = new NotifyIcon
+        NotifyIcon? notifyIcon = null;
+        if (icon != null)
         {
-            Icon = icon,
-            Text = Truncate(string.IsNullOrEmpty(title) ? process.ProcessName : title, 63),
-            Visible = true,
-        };
-        notifyIcon.MouseClick += (_, e) =>
-        {
-            if (e.Button == MouseButtons.Left) Restore(hwnd);
-        };
+            notifyIcon = new NotifyIcon
+            {
+                Icon = icon,
+                Text = Truncate(string.IsNullOrEmpty(title) ? process.ProcessName : title, 63),
+                Visible = true,
+            };
+            notifyIcon.MouseClick += (_, e) =>
+            {
+                if (e.Button == MouseButtons.Left) Restore(hwnd);
+            };
 
-        var menu = new ContextMenuStrip();
-        menu.Items.Add("Restore", null, (_, _) => Restore(hwnd));
-        menu.Items.Add("Close window", null, (_, _) => CloseWindow(hwnd));
-        notifyIcon.ContextMenuStrip = menu;
+            var menu = new ContextMenuStrip();
+            menu.Items.Add("Restore", null, (_, _) => Restore(hwnd));
+            menu.Items.Add("Close window", null, (_, _) => CloseWindow(hwnd));
+            notifyIcon.ContextMenuStrip = menu;
+        }
 
         _trayed[hwnd] = new TrayedWindow { Hwnd = hwnd, Icon = notifyIcon, Process = process };
 
@@ -123,7 +129,7 @@ public class TrayMinimizer : IDisposable
     }
 
     /// <summary>Immediately tray every qualifying window of the given executable. Returns how many were trayed.</summary>
-    public int MinimizeAllWindowsOf(string exeName)
+    public int MinimizeAllWindowsOf(string exeName, bool suppressIcon = false)
     {
         int count = 0;
         foreach (var hwnd in NativeMethods.GetTopLevelWindows())
@@ -148,7 +154,7 @@ public class TrayMinimizer : IDisposable
 
             if (!string.Equals(process.ProcessName + ".exe", exeName, StringComparison.OrdinalIgnoreCase)) continue;
 
-            MinimizeToTray(hwnd, process);
+            MinimizeToTray(hwnd, process, suppressIcon);
             if (IsTrayed(hwnd)) count++;
         }
         return count;
@@ -175,7 +181,7 @@ public class TrayMinimizer : IDisposable
 
     private void RemoveIcon(IntPtr hwnd)
     {
-        if (_trayed.Remove(hwnd, out var trayed))
+        if (_trayed.Remove(hwnd, out var trayed) && trayed.Icon != null)
         {
             trayed.Icon.Visible = false;
             trayed.Icon.Dispose();

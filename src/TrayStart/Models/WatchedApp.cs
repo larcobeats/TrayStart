@@ -15,4 +15,12 @@ public partial class WatchedApp : ObservableObject
 
     [ObservableProperty]
     private bool _enabled = true;
+
+    /// <summary>
+    /// The app has its own tray icon (auto-detected at add time, user-overridable).
+    /// When true, TrayStart hides the window but doesn't add a duplicate tray icon —
+    /// the app's native icon is used to bring it back.
+    /// </summary>
+    [ObservableProperty]
+    private bool _hasOwnTray;
 }
