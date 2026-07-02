@@ -109,7 +109,8 @@
                 Padding="16,12" Margin="0,16,0,0">
             <StackPanel>
                 <CheckBox Content="Start TrayStart when Windows starts"
-                          IsChecked="{Binding StartWithWindows}"/>
+                          IsChecked="{Binding StartWithWindows}"
+                          ToolTip="Creates a per-user scheduled task that launches TrayStart minimized to the tray each time you sign in."/>
                 <Border Height="1" Background="#EEF0F3" Margin="0,12"/>
                 <Grid>
                     <Grid.ColumnDefinitions>

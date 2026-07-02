@@ -21,7 +21,7 @@ TrayStart checks for updates once on launch and via the **Check for updates** bu
 
 1. Open TrayStart (double-click the tray icon for settings).
 2. Add programs with **Add program…** (browse to an .exe) or **Add running window…** (pick from open windows).
-3. Optionally enable **Start TrayStart when Windows starts**.
+3. Optionally enable **Start TrayStart when Windows starts** — this registers a per-user scheduled task that launches TrayStart minimized to the tray at sign-in.
 
 Closing the settings window keeps TrayStart running in the tray. Exit via the tray icon's right-click menu.
 
@@ -64,7 +64,7 @@ src/TrayStart/
 │   ├── WindowWatcher.cs     WinEvent hook — detects new windows of watched apps
 │   ├── TrayMinimizer.cs     Hide window ↔ tray icon lifecycle, restore-all safety net
 │   ├── SettingsService.cs   Load/save settings
-│   ├── StartupService.cs    HKCU Run key (start at login)
+│   ├── StartupService.cs    Scheduled task (start at sign-in, minimized to tray)
 │   ├── UpdateService.cs     Velopack update checks (launch + manual only)
 │   └── AppTrayIcon.cs       TrayStart's own tray icon + menu
 ├── ViewModels/              MVVM viewmodels (CommunityToolkit.Mvvm)
