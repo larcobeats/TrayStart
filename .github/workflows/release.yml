@@ -25,7 +25,9 @@ jobs:
           "version=$v" >> $env:GITHUB_OUTPUT
 
       - name: Publish
-        run: dotnet publish src/TrayStart/TrayStart.csproj -c Release -r win-x64 --self-contained -o publish -p:Version=${{ steps.version.outputs.version }}
+        # Framework-dependent: ~3 MB instead of ~75 MB. Setup bootstraps the
+        # .NET Desktop Runtime via --framework only on machines that lack it.
+        run: dotnet publish src/TrayStart/TrayStart.csproj -c Release -r win-x64 --no-self-contained -o publish -p:Version=${{ steps.version.outputs.version }}
 
       - name: Install Velopack CLI
         run: dotnet tool install -g vpk
@@ -44,6 +46,7 @@ jobs:
           --packTitle TrayStart
           --packAuthors larcobeats
           --icon src/TrayStart/Assets/TrayStart.ico
+          --framework net8.0-x64-desktop
 
       - name: Upload to GitHub Release
         run: >
