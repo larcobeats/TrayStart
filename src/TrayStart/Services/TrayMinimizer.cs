@@ -17,7 +17,12 @@ public class TrayMinimizer : IDisposable
         public required IntPtr Hwnd { get; init; }
         public required NotifyIcon Icon { get; init; }
         public Process? Process { get; init; }
+        public DateTime TrayedAt { get; } = DateTime.Now;
+        public int ReHideCount { get; set; }
     }
+
+    // Give up re-hiding a window that keeps force-showing itself after this many attempts.
+    private const int MaxReHides = 8;
 
     private readonly Dictionary<IntPtr, TrayedWindow> _trayed = new();
 
@@ -30,10 +35,13 @@ public class TrayMinimizer : IDisposable
 
     public void MinimizeToTray(IntPtr hwnd, Process process)
     {
+        if (IsTrayed(hwnd)) return;
+        _restoredByUser.Remove(hwnd); // an explicit tray request overrides an earlier restore
+
         string title = NativeMethods.GetWindowTitle(hwnd);
         Icon icon = GetWindowIcon(hwnd, process);
 
-        NativeMethods.ShowWindow(hwnd, NativeMethods.SW_HIDE);
+        HideWindow(hwnd);
         if (NativeMethods.IsWindowVisible(hwnd))
         {
             // Hide was blocked (e.g. elevated window and we're not) — don't orphan a tray icon.
@@ -72,18 +80,78 @@ public class TrayMinimizer : IDisposable
         }
     }
 
+    /// <summary>Minimize-then-hide (RBTray's technique): the window restores in its previous
+    /// state instead of flashing full screen, and apps rarely force-show a minimized window.</summary>
+    private static void HideWindow(IntPtr hwnd)
+    {
+        NativeMethods.ShowWindow(hwnd, NativeMethods.SW_MINIMIZE);
+        NativeMethods.ShowWindow(hwnd, NativeMethods.SW_HIDE);
+    }
+
+    /// <summary>
+    /// Called when a window we trayed becomes visible again. Apps (especially Electron ones)
+    /// often re-show their window several times during startup — within the grace period we
+    /// simply hide it again. A re-show after the grace period (or too many fights) is treated
+    /// as intentional: drop our tray icon and leave the window alone.
+    /// </summary>
+    public void HandleReShown(IntPtr hwnd, int graceSeconds)
+    {
+        if (!_trayed.TryGetValue(hwnd, out var trayed)) return;
+
+        bool withinGrace = (DateTime.Now - trayed.TrayedAt).TotalSeconds <= Math.Max(1, graceSeconds);
+        if (withinGrace && trayed.ReHideCount < MaxReHides)
+        {
+            trayed.ReHideCount++;
+            HideWindow(hwnd);
+            if (!NativeMethods.IsWindowVisible(hwnd)) return;
+        }
+
+        // Intentional re-show (or the app won't give up) — remove the stale icon.
+        RemoveIcon(hwnd);
+        _restoredByUser.Add(hwnd);
+    }
+
     public void Restore(IntPtr hwnd)
     {
         RemoveIcon(hwnd);
         if (!NativeMethods.IsWindow(hwnd)) return;
 
         _restoredByUser.Add(hwnd);
+        NativeMethods.ShowWindow(hwnd, NativeMethods.SW_RESTORE);
         NativeMethods.ShowWindow(hwnd, NativeMethods.SW_SHOW);
-        if (NativeMethods.IsIconic(hwnd))
-        {
-            NativeMethods.ShowWindow(hwnd, NativeMethods.SW_RESTORE);
-        }
         NativeMethods.SetForegroundWindow(hwnd);
+    }
+
+    /// <summary>Immediately tray every qualifying window of the given executable. Returns how many were trayed.</summary>
+    public int MinimizeAllWindowsOf(string exeName)
+    {
+        int count = 0;
+        foreach (var hwnd in NativeMethods.GetTopLevelWindows())
+        {
+            if (IsTrayed(hwnd)) continue;
+            if (!NativeMethods.IsWindowVisible(hwnd)) continue;
+            if (NativeMethods.GetWindow(hwnd, NativeMethods.GW_OWNER) != IntPtr.Zero) continue;
+            if (NativeMethods.GetWindowTextLength(hwnd) == 0) continue;
+
+            NativeMethods.GetWindowThreadProcessId(hwnd, out uint pid);
+            if (pid == 0) continue;
+
+            Process process;
+            try
+            {
+                process = Process.GetProcessById((int)pid);
+            }
+            catch
+            {
+                continue;
+            }
+
+            if (!string.Equals(process.ProcessName + ".exe", exeName, StringComparison.OrdinalIgnoreCase)) continue;
+
+            MinimizeToTray(hwnd, process);
+            if (IsTrayed(hwnd)) count++;
+        }
+        return count;
     }
 
     public void RestoreAll()

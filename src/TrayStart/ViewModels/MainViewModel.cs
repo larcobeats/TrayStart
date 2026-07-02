@@ -20,6 +20,7 @@ public partial class MainViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(RemoveCommand))]
+    [NotifyCanExecuteChangedFor(nameof(MinimizeNowCommand))]
     private WatchedApp? _selectedApp;
 
     [ObservableProperty]
@@ -110,6 +111,21 @@ public partial class MainViewModel : ObservableObject
     }
 
     private bool CanRemove() => SelectedApp != null;
+
+    [RelayCommand(CanExecute = nameof(CanMinimizeNow))]
+    private void MinimizeNow()
+    {
+        if (SelectedApp == null) return;
+        int count = _app.Minimizer.MinimizeAllWindowsOf(SelectedApp.ExeName);
+        if (count == 0)
+        {
+            MessageBox.Show(
+                $"No open windows found for {SelectedApp.DisplayName} ({SelectedApp.ExeName}).",
+                "TrayStart", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+    }
+
+    private bool CanMinimizeNow() => SelectedApp != null;
 
     [RelayCommand(CanExecute = nameof(CanCheckForUpdates))]
     private async Task CheckForUpdatesAsync()

@@ -56,8 +56,17 @@ public class WindowWatcher : IDisposable
 
     private void HandleWindowShown(IntPtr hwnd)
     {
-        // Only real, unowned, titled top-level windows — filters tooltips, popups, splash fragments.
         if (NativeMethods.GetAncestor(hwnd, NativeMethods.GA_ROOT) != hwnd) return;
+
+        // A window we already trayed is showing again: the app force-showed itself during
+        // startup (re-hide it) or the user brought it back intentionally (release it).
+        if (_minimizer.IsTrayed(hwnd))
+        {
+            _minimizer.HandleReShown(hwnd, _settings.Settings.GraceSeconds);
+            return;
+        }
+
+        // Only real, unowned, titled top-level windows — filters tooltips, popups, splash fragments.
         if (NativeMethods.GetWindow(hwnd, NativeMethods.GW_OWNER) != IntPtr.Zero) return;
         if (!NativeMethods.IsWindowVisible(hwnd)) return;
         if (NativeMethods.GetWindowTextLength(hwnd) == 0) return;
@@ -65,7 +74,6 @@ public class WindowWatcher : IDisposable
         NativeMethods.GetWindowThreadProcessId(hwnd, out uint pid);
         if (pid == 0) return;
 
-        if (_minimizer.IsTrayed(hwnd)) return;
         if (_minimizer.WasRestoredByUser(hwnd)) return;
 
         Process process;

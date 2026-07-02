@@ -13,6 +13,7 @@ internal static class NativeMethods
 
     public const int SW_HIDE = 0;
     public const int SW_SHOW = 5;
+    public const int SW_MINIMIZE = 6;
     public const int SW_RESTORE = 9;
 
     public const uint GA_ROOT = 2;
@@ -29,6 +30,18 @@ internal static class NativeMethods
     public delegate void WinEventDelegate(
         IntPtr hWinEventHook, uint eventType, IntPtr hwnd,
         int idObject, int idChild, uint dwEventThread, uint dwmsEventTime);
+
+    public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    public static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+
+    public static List<IntPtr> GetTopLevelWindows()
+    {
+        var windows = new List<IntPtr>();
+        EnumWindows((hwnd, _) => { windows.Add(hwnd); return true; }, IntPtr.Zero);
+        return windows;
+    }
 
     [DllImport("user32.dll")]
     public static extern IntPtr SetWinEventHook(
