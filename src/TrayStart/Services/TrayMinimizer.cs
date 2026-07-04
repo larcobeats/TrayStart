@@ -96,23 +96,39 @@ public class TrayMinimizer : IDisposable
 
     /// <summary>
     /// Called when a window we trayed becomes visible again. Apps (especially Electron ones)
-    /// often re-show their window several times during startup — within the grace period we
-    /// simply hide it again. A re-show after the grace period (or too many fights) is treated
-    /// as intentional: drop our tray icon and leave the window alone.
+    /// often re-show their window several times while starting up — during the app's own
+    /// startup window we simply hide it again. Once the process is past startup, any re-show
+    /// is treated as the user intentionally bringing the app back (e.g. via the app's own
+    /// tray icon): drop our tray icon, leave the window alone, and never auto-hide it again.
     /// </summary>
     public void HandleReShown(IntPtr hwnd, int graceSeconds)
     {
         if (!_trayed.TryGetValue(hwnd, out var trayed)) return;
 
-        bool withinGrace = (DateTime.Now - trayed.TrayedAt).TotalSeconds <= Math.Max(1, graceSeconds);
-        if (withinGrace && trayed.ReHideCount < MaxReHides)
+        // Anchor the grace period to when the APP started, not when we hid it — a window
+        // hidden by the startup sweep long after its process launched must come back the
+        // moment the user asks for it.
+        bool withinStartupGrace;
+        try
+        {
+            withinStartupGrace = trayed.Process != null &&
+                (DateTime.Now - trayed.Process.StartTime).TotalSeconds <= Math.Max(1, graceSeconds);
+        }
+        catch
+        {
+            // Process start time unreadable — allow only a short re-hide window after traying.
+            withinStartupGrace = (DateTime.Now - trayed.TrayedAt).TotalSeconds <= 5;
+        }
+
+        if (withinStartupGrace && trayed.ReHideCount < MaxReHides)
         {
             trayed.ReHideCount++;
             HideWindow(hwnd);
             if (!NativeMethods.IsWindowVisible(hwnd)) return;
         }
 
-        // Intentional re-show (or the app won't give up) — remove the stale icon.
+        // Intentional re-show (or the app won't give up) — remove the stale icon and
+        // remember that this window belongs to the user now.
         RemoveIcon(hwnd);
         _restoredByUser.Add(hwnd);
     }
@@ -128,13 +144,18 @@ public class TrayMinimizer : IDisposable
         NativeMethods.SetForegroundWindow(hwnd);
     }
 
-    /// <summary>Immediately tray every qualifying window of the given executable. Returns how many were trayed.</summary>
-    public int MinimizeAllWindowsOf(string exeName, bool suppressIcon = false)
+    /// <summary>
+    /// Immediately tray every qualifying window of the given executable. Returns how many were trayed.
+    /// With <paramref name="respectUserRestore"/> (used by the startup sweep), windows the user
+    /// deliberately restored are left alone; the manual "Minimize to tray now" button overrides that.
+    /// </summary>
+    public int MinimizeAllWindowsOf(string exeName, bool suppressIcon = false, bool respectUserRestore = false)
     {
         int count = 0;
         foreach (var hwnd in NativeMethods.GetTopLevelWindows())
         {
             if (IsTrayed(hwnd)) continue;
+            if (respectUserRestore && WasRestoredByUser(hwnd)) continue;
             if (!NativeMethods.IsWindowVisible(hwnd)) continue;
             if (NativeMethods.GetWindow(hwnd, NativeMethods.GW_OWNER) != IntPtr.Zero) continue;
             if (NativeMethods.GetWindowTextLength(hwnd) == 0) continue;

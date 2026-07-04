@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Threading;
 using TrayStart.Services;
 using TrayStart.Views;
 
@@ -6,6 +7,9 @@ namespace TrayStart;
 
 public partial class App : Application
 {
+    private DispatcherTimer? _startupSweepTimer;
+    private DateTime _startupSweepUntil;
+
     public SettingsService SettingsService { get; private set; } = null!;
     public TrayMinimizer Minimizer { get; private set; } = null!;
     public WindowWatcher Watcher { get; private set; } = null!;
@@ -32,6 +36,12 @@ public partial class App : Application
         Minimizer = new TrayMinimizer();
         Watcher = new WindowWatcher(SettingsService, Minimizer);
         Watcher.Start();
+
+        // The hook above only sees windows shown from now on. Watched apps that started
+        // before TrayStart (typical at sign-in) already have visible windows — sweep them
+        // into the tray now, and keep rechecking briefly to catch slow starters.
+        SweepWatchedAppWindows();
+        StartStartupSweep();
 
         Updates = new UpdateService();
         _trayIcon = new AppTrayIcon(this);
@@ -90,6 +100,35 @@ public partial class App : Application
         {
             // Offline or GitHub unreachable — stay quiet on launch; manual check reports errors.
         }
+    }
+
+    /// <summary>Hide already-visible windows of enabled watched apps. Windows the user
+    /// deliberately restored are skipped, so repeated sweeps never fight the user.</summary>
+    private void SweepWatchedAppWindows()
+    {
+        foreach (var watched in SettingsService.Settings.WatchedApps.Where(w => w.Enabled))
+        {
+            Minimizer.MinimizeAllWindowsOf(watched.ExeName,
+                suppressIcon: watched.HasOwnTray, respectUserRestore: true);
+        }
+    }
+
+    /// <summary>Recheck every 10 seconds for the first 2 minutes after launch — sign-in apps
+    /// can take a while to show their first window. Stops permanently afterwards.</summary>
+    private void StartStartupSweep()
+    {
+        _startupSweepUntil = DateTime.Now.AddMinutes(2);
+        _startupSweepTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(10) };
+        _startupSweepTimer.Tick += (_, _) =>
+        {
+            SweepWatchedAppWindows();
+            if (DateTime.Now >= _startupSweepUntil)
+            {
+                _startupSweepTimer!.Stop();
+                _startupSweepTimer = null;
+            }
+        };
+        _startupSweepTimer.Start();
     }
 
     public void ExitApp()
