@@ -46,6 +46,10 @@ public partial class App : Application
         Updates = new UpdateService();
         _trayIcon = new AppTrayIcon(this);
 
+        Log.Write($"=== TrayStart {Updates.CurrentVersion} started (args: {string.Join(' ', e.Args)}; " +
+            $"bootMode={WindowWatcher.InBootMode}; watched: " +
+            $"{string.Join(", ", SettingsService.Settings.WatchedApps.Where(w => w.Enabled).Select(w => w.ExeName))}) ===");
+
         // "--tray" (used by the Run-at-login entry) starts silently in the tray.
         if (!e.Args.Contains("--tray"))
         {
@@ -125,6 +129,7 @@ public partial class App : Application
             SweepWatchedAppWindows();
             if (DateTime.Now >= _startupSweepUntil && !WindowWatcher.InBootMode)
             {
+                Log.Write("startup sweep finished");
                 _startupSweepTimer!.Stop();
                 _startupSweepTimer = null;
             }

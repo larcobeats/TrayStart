@@ -76,6 +76,12 @@ public class WindowWatcher : IDisposable
             return;
         }
 
+        if (_minimizer.WasRestoredByUser(hwnd) && NativeMethods.GetWindowTextLength(hwnd) > 0)
+        {
+            Log.Write($"hook: hwnd={hwnd} shown but SKIPPED (previously restored by user)");
+            return;
+        }
+
         // Only real, unowned, titled top-level windows — filters tooltips, popups, splash fragments.
         if (NativeMethods.GetWindow(hwnd, NativeMethods.GW_OWNER) != IntPtr.Zero) return;
         if (!NativeMethods.IsWindowVisible(hwnd)) return;
@@ -105,7 +111,12 @@ public class WindowWatcher : IDisposable
         // typing right now, in which case this window may be one they just opened; defer
         // to the normal rules (the startup sweep still catches true autostart windows).
         bool bootModeHide = InBootMode && NativeMethods.SecondsSinceLastInput() > 3;
-        if (!bootModeHide && !IsWithinGracePeriod(process, pid)) return;
+        if (!bootModeHide && !IsWithinGracePeriod(process, pid))
+        {
+            Log.Write($"hook: {exeName} hwnd={hwnd} shown but SKIPPED (outside grace, boot={InBootMode}, " +
+                $"input={NativeMethods.SecondsSinceLastInput():F1}s)");
+            return;
+        }
 
         _minimizer.MinimizeToTray(hwnd, process, suppressIcon: watched.HasOwnTray);
     }

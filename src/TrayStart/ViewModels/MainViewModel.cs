@@ -116,6 +116,7 @@ public partial class MainViewModel : ObservableObject
     private void MinimizeNow()
     {
         if (SelectedApp == null) return;
+        Log.Write($"manual minimize requested for {SelectedApp.ExeName}");
         int count = _app.Minimizer.MinimizeAllWindowsOf(SelectedApp.ExeName, suppressIcon: SelectedApp.HasOwnTray);
         if (count == 0)
         {

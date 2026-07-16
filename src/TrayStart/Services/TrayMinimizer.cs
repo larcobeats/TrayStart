@@ -47,9 +47,11 @@ public class TrayMinimizer : IDisposable
         if (NativeMethods.IsWindowVisible(hwnd))
         {
             // Hide was blocked (e.g. elevated window and we're not) — don't orphan a tray icon.
+            Log.Write($"hide BLOCKED for {process.ProcessName} hwnd={hwnd} \"{title}\" (still visible — elevated?)");
             icon?.Dispose();
             return;
         }
+        Log.Write($"hid {process.ProcessName} hwnd={hwnd} \"{title}\" (ownIcon={suppressIcon})");
 
         NotifyIcon? notifyIcon = null;
         if (icon != null)
@@ -95,40 +97,53 @@ public class TrayMinimizer : IDisposable
     }
 
     /// <summary>
-    /// Called when a window we trayed becomes visible again. Apps (especially Electron ones)
-    /// often re-show their window several times while starting up — during the app's own
-    /// startup window we simply hide it again. Once the process is past startup, any re-show
-    /// is treated as the user intentionally bringing the app back (e.g. via the app's own
-    /// tray icon): drop our tray icon, leave the window alone, and never auto-hide it again.
+    /// Called when a window we trayed becomes visible again. Deciding between "the app
+    /// force-reshowed itself" (re-hide it) and "the user brought it back" (release it,
+    /// permanently):
+    ///  - Recent user input (click/keypress within ~2s) always means the user — release.
+    ///  - Otherwise, re-hide while the app is starting up, right after we hid it, or any
+    ///    time during boot mode — self-reshows in those windows are never user intent.
+    ///  - Anything else is the user (e.g. app's own tray icon) — release.
     /// </summary>
     public void HandleReShown(IntPtr hwnd, int graceSeconds)
     {
         if (!_trayed.TryGetValue(hwnd, out var trayed)) return;
 
-        // Anchor the grace period to when the APP started, not when we hid it — a window
-        // hidden by the startup sweep long after its process launched must come back the
-        // moment the user asks for it.
-        bool withinStartupGrace;
+        int grace = Math.Max(1, graceSeconds);
+        double processAge = double.MaxValue;
         try
         {
-            withinStartupGrace = trayed.Process != null &&
-                (DateTime.Now - trayed.Process.StartTime).TotalSeconds <= Math.Max(1, graceSeconds);
+            if (trayed.Process != null)
+            {
+                processAge = (DateTime.Now - trayed.Process.StartTime).TotalSeconds;
+            }
         }
         catch
         {
-            // Process start time unreadable — allow only a short re-hide window after traying.
-            withinStartupGrace = (DateTime.Now - trayed.TrayedAt).TotalSeconds <= 5;
+            // Unreadable (elevated) — rely on the other signals.
         }
+        double trayedAge = (DateTime.Now - trayed.TrayedAt).TotalSeconds;
+        double inputAge = NativeMethods.SecondsSinceLastInput();
 
-        if (withinStartupGrace && trayed.ReHideCount < MaxReHides)
+        bool userLikelyDidIt = inputAge <= 2.0;
+        bool selfReshowWindow = processAge <= grace || trayedAge <= grace || WindowWatcher.InBootMode;
+
+        if (!userLikelyDidIt && selfReshowWindow && trayed.ReHideCount < MaxReHides)
         {
             trayed.ReHideCount++;
+            Log.Write($"reshown hwnd={hwnd}: re-hide #{trayed.ReHideCount} " +
+                $"(procAge={processAge:F0}s trayedAge={trayedAge:F0}s input={inputAge:F1}s boot={WindowWatcher.InBootMode})");
             HideWindow(hwnd);
             if (!NativeMethods.IsWindowVisible(hwnd)) return;
+            Log.Write($"reshown hwnd={hwnd}: re-hide FAILED, window still visible");
         }
 
-        // Intentional re-show (or the app won't give up) — remove the stale icon and
-        // remember that this window belongs to the user now.
+        // User restore (or the app won't give up) — remove our icon and remember that
+        // this window belongs to the user now.
+        string reason = userLikelyDidIt ? "user input" :
+            !selfReshowWindow ? "outside re-hide windows" : "re-hide cap reached";
+        Log.Write($"reshown hwnd={hwnd}: RELEASED to user ({reason}; " +
+            $"procAge={processAge:F0}s trayedAge={trayedAge:F0}s input={inputAge:F1}s boot={WindowWatcher.InBootMode})");
         RemoveIcon(hwnd);
         _restoredByUser.Add(hwnd);
     }
@@ -138,6 +153,7 @@ public class TrayMinimizer : IDisposable
         RemoveIcon(hwnd);
         if (!NativeMethods.IsWindow(hwnd)) return;
 
+        Log.Write($"restore hwnd={hwnd} (user, via TrayStart)");
         _restoredByUser.Add(hwnd);
         NativeMethods.ShowWindow(hwnd, NativeMethods.SW_RESTORE);
         NativeMethods.ShowWindow(hwnd, NativeMethods.SW_SHOW);

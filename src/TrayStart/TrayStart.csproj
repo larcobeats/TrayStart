@@ -11,7 +11,7 @@
     <StartupObject>TrayStart.Program</StartupObject>
     <ApplicationIcon>Assets\TrayStart.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>0.5.2</Version>
+    <Version>0.5.3</Version>
     <Authors>larcobeats</Authors>
     <Product>TrayStart</Product>
     <Description>Automatically minimize any application to the system tray when it starts.</Description>
