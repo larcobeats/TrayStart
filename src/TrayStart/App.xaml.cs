@@ -15,6 +15,11 @@ public partial class App : Application
     public WindowWatcher Watcher { get; private set; } = null!;
     public UpdateService Updates { get; private set; } = null!;
 
+    /// <summary>Raised when the Ctrl+click gesture adds a new app, so an open settings window can reflect it.</summary>
+    public event EventHandler<Models.WatchedApp>? WatchedAppAdded;
+
+    private CaptionClickHook? _captionHook;
+
     private AppTrayIcon? _trayIcon;
     private MainWindow? _mainWindow;
     private bool _isExiting;
@@ -42,6 +47,12 @@ public partial class App : Application
         // into the tray now, and keep rechecking briefly to catch slow starters.
         SweepWatchedAppWindows();
         StartStartupSweep();
+
+        _captionHook = new CaptionClickHook(this);
+        if (SettingsService.Settings.CtrlClickToTray)
+        {
+            _captionHook.Start();
+        }
 
         Updates = new UpdateService();
         _trayIcon = new AppTrayIcon(this);
@@ -106,6 +117,40 @@ public partial class App : Application
         }
     }
 
+    public void ApplyGestureSetting(bool enabled)
+    {
+        if (enabled)
+        {
+            _captionHook?.Start();
+        }
+        else
+        {
+            _captionHook?.Stop();
+        }
+    }
+
+    /// <summary>Add an app to the watch list (no-op if already present). Used by the
+    /// Ctrl+click gesture; keeps settings saved and an open settings window in sync.</summary>
+    public Models.WatchedApp AddOrGetWatchedApp(string exeName, string displayName)
+    {
+        var existing = SettingsService.Settings.WatchedApps.FirstOrDefault(w =>
+            string.Equals(w.ExeName, exeName, StringComparison.OrdinalIgnoreCase));
+        if (existing != null) return existing;
+
+        var app = new Models.WatchedApp
+        {
+            ExeName = exeName,
+            DisplayName = displayName,
+            Enabled = true,
+            HasOwnTray = TrayIconRegistry.ExeHasOwnTrayIcon(exeName),
+        };
+        SettingsService.Settings.WatchedApps.Add(app);
+        SettingsService.Save();
+        Log.Write($"gesture: added {exeName} to watch list (ownIcon={app.HasOwnTray})");
+        WatchedAppAdded?.Invoke(this, app);
+        return app;
+    }
+
     /// <summary>Hide already-visible windows of enabled watched apps. Windows the user
     /// deliberately restored are skipped, so repeated sweeps never fight the user.</summary>
     private void SweepWatchedAppWindows()
@@ -145,6 +190,7 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        _captionHook?.Dispose();
         Watcher?.Dispose();
         Minimizer?.Dispose();   // restores all hidden windows
         _trayIcon?.Dispose();

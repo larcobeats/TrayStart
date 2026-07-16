@@ -27,6 +27,9 @@ public partial class MainViewModel : ObservableObject
     private bool _startWithWindows;
 
     [ObservableProperty]
+    private bool _ctrlClickToTray;
+
+    [ObservableProperty]
     private string _updateStatus = string.Empty;
 
     [ObservableProperty]
@@ -47,6 +50,17 @@ public partial class MainViewModel : ObservableObject
         }
 
         _startWithWindows = StartupService.IsEnabled();
+        _ctrlClickToTray = _settings.Settings.CtrlClickToTray;
+
+        // The Ctrl+click gesture can add apps while this window is open — reflect them live.
+        app.WatchedAppAdded += (_, added) =>
+        {
+            if (!WatchedApps.Any(w => string.Equals(w.ExeName, added.ExeName, StringComparison.OrdinalIgnoreCase)))
+            {
+                added.PropertyChanged += OnWatchedAppChanged;
+                WatchedApps.Add(added);
+            }
+        };
 
         if (!_app.Updates.IsSupported)
         {
@@ -65,6 +79,13 @@ public partial class MainViewModel : ObservableObject
             MessageBox.Show($"Couldn't update the startup setting:\n{ex.Message}", "TrayStart",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
         }
+    }
+
+    partial void OnCtrlClickToTrayChanged(bool value)
+    {
+        _settings.Settings.CtrlClickToTray = value;
+        _settings.Save();
+        _app.ApplyGestureSetting(value);
     }
 
     private void OnWatchedAppChanged(object? sender, PropertyChangedEventArgs e) => SaveWatchedApps();
@@ -117,7 +138,8 @@ public partial class MainViewModel : ObservableObject
     {
         if (SelectedApp == null) return;
         Log.Write($"manual minimize requested for {SelectedApp.ExeName}");
-        int count = _app.Minimizer.MinimizeAllWindowsOf(SelectedApp.ExeName, suppressIcon: SelectedApp.HasOwnTray);
+        int count = _app.Minimizer.MinimizeAllWindowsOf(SelectedApp.ExeName,
+            suppressIcon: SelectedApp.HasOwnTray, userInitiated: true);
         if (count == 0)
         {
             MessageBox.Show(

@@ -12,4 +12,7 @@ public class AppSettings
 
     /// <summary>Show a one-time balloon tip the first time the settings window is closed to tray.</summary>
     public bool ShownCloseToTrayTip { get; set; }
+
+    /// <summary>Ctrl+click a window's minimize/close button to tray it and add it to the watch list.</summary>
+    public bool CtrlClickToTray { get; set; } = true;
 }

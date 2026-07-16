@@ -20,6 +20,9 @@ public class TrayMinimizer : IDisposable
         public Process? Process { get; init; }
         public DateTime TrayedAt { get; } = DateTime.Now;
         public int ReHideCount { get; set; }
+        // Hidden by an explicit user action (gesture / "Minimize now" button): the user's
+        // recent input must not be misread as them restoring the window moments later.
+        public bool UserInitiatedHide { get; init; }
     }
 
     // Give up re-hiding a window that keeps force-showing itself after this many attempts.
@@ -35,7 +38,8 @@ public class TrayMinimizer : IDisposable
     public bool WasRestoredByUser(IntPtr hwnd) => _restoredByUser.Contains(hwnd);
 
     /// <param name="suppressIcon">The app has its own tray icon; hide the window but don't add a duplicate icon.</param>
-    public void MinimizeToTray(IntPtr hwnd, Process process, bool suppressIcon = false)
+    /// <param name="userInitiated">The hide was an explicit user action (gesture or button).</param>
+    public void MinimizeToTray(IntPtr hwnd, Process process, bool suppressIcon = false, bool userInitiated = false)
     {
         if (IsTrayed(hwnd)) return;
         _restoredByUser.Remove(hwnd); // an explicit tray request overrides an earlier restore
@@ -73,7 +77,13 @@ public class TrayMinimizer : IDisposable
             notifyIcon.ContextMenuStrip = menu;
         }
 
-        _trayed[hwnd] = new TrayedWindow { Hwnd = hwnd, Icon = notifyIcon, Process = process };
+        _trayed[hwnd] = new TrayedWindow
+        {
+            Hwnd = hwnd,
+            Icon = notifyIcon,
+            Process = process,
+            UserInitiatedHide = userInitiated,
+        };
 
         // Remove the tray icon if the process dies while hidden.
         try
@@ -125,7 +135,9 @@ public class TrayMinimizer : IDisposable
         double trayedAge = (DateTime.Now - trayed.TrayedAt).TotalSeconds;
         double inputAge = NativeMethods.SecondsSinceLastInput();
 
-        bool userLikelyDidIt = inputAge <= 2.0;
+        // Right after the user explicitly hid this window, their input is the CAUSE of the
+        // hide — an immediate re-show is the app fighting back, not the user changing course.
+        bool userLikelyDidIt = inputAge <= 2.0 && !(trayed.UserInitiatedHide && trayedAge <= grace);
         bool selfReshowWindow = processAge <= grace || trayedAge <= grace || WindowWatcher.InBootMode;
 
         if (!userLikelyDidIt && selfReshowWindow && trayed.ReHideCount < MaxReHides)
@@ -165,7 +177,8 @@ public class TrayMinimizer : IDisposable
     /// With <paramref name="respectUserRestore"/> (used by the startup sweep), windows the user
     /// deliberately restored are left alone; the manual "Minimize to tray now" button overrides that.
     /// </summary>
-    public int MinimizeAllWindowsOf(string exeName, bool suppressIcon = false, bool respectUserRestore = false)
+    public int MinimizeAllWindowsOf(string exeName, bool suppressIcon = false, bool respectUserRestore = false,
+        bool userInitiated = false)
     {
         int count = 0;
         foreach (var hwnd in NativeMethods.GetTopLevelWindows())
@@ -191,7 +204,7 @@ public class TrayMinimizer : IDisposable
 
             if (!string.Equals(process.ProcessName + ".exe", exeName, StringComparison.OrdinalIgnoreCase)) continue;
 
-            MinimizeToTray(hwnd, process, suppressIcon);
+            MinimizeToTray(hwnd, process, suppressIcon, userInitiated);
             if (IsTrayed(hwnd)) count++;
         }
         return count;

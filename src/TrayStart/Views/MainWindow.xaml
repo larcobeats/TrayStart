@@ -111,6 +111,9 @@
                 <CheckBox Content="Start TrayStart when Windows starts"
                           IsChecked="{Binding StartWithWindows}"
                           ToolTip="Creates a per-user scheduled task that launches TrayStart minimized to the tray each time you sign in."/>
+                <CheckBox Content="Ctrl+click a minimize/close button sends the window to the tray"
+                          IsChecked="{Binding CtrlClickToTray}" Margin="0,10,0,0"
+                          ToolTip="Hold Ctrl and click any window's minimize or close button to send it to the tray and add its app to the watch list automatically."/>
                 <Border Height="1" Background="#EEF0F3" Margin="0,12"/>
                 <Grid>
                     <Grid.ColumnDefinitions>

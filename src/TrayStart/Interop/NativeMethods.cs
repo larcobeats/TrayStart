@@ -91,6 +91,58 @@ internal static class NativeMethods
     [DllImport("user32.dll", EntryPoint = "GetClassLongPtrW")]
     public static extern IntPtr GetClassLongPtr(IntPtr hWnd, int nIndex);
 
+    // --- Low-level mouse hook (Ctrl+click-to-tray gesture) ---
+
+    public const int WH_MOUSE_LL = 14;
+    public const int WM_LBUTTONDOWN = 0x0201;
+    public const int WM_LBUTTONUP = 0x0202;
+    public const int WM_NCHITTEST = 0x0084;
+    public const int HTMINBUTTON = 8;
+    public const int HTCLOSE = 20;
+    public const int VK_CONTROL = 0x11;
+    public const uint SMTO_ABORTIFHUNG = 0x0002;
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct POINT
+    {
+        public int X;
+        public int Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct MSLLHOOKSTRUCT
+    {
+        public POINT pt;
+        public uint mouseData;
+        public uint flags;
+        public uint time;
+        public IntPtr dwExtraInfo;
+    }
+
+    public delegate IntPtr LowLevelMouseProc(int nCode, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    public static extern IntPtr SetWindowsHookEx(int idHook, LowLevelMouseProc lpfn, IntPtr hMod, uint dwThreadId);
+
+    [DllImport("user32.dll")]
+    public static extern bool UnhookWindowsHookEx(IntPtr hhk);
+
+    [DllImport("user32.dll")]
+    public static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+    public static extern IntPtr GetModuleHandle(string? lpModuleName);
+
+    [DllImport("user32.dll")]
+    public static extern short GetAsyncKeyState(int vKey);
+
+    [DllImport("user32.dll")]
+    public static extern IntPtr WindowFromPoint(POINT point);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    public static extern IntPtr SendMessageTimeout(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam,
+        uint fuFlags, uint uTimeout, out IntPtr lpdwResult);
+
     [StructLayout(LayoutKind.Sequential)]
     public struct LASTINPUTINFO
     {
