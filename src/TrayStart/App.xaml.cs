@@ -113,8 +113,9 @@ public partial class App : Application
         }
     }
 
-    /// <summary>Recheck every 10 seconds for the first 2 minutes after launch — sign-in apps
-    /// can take a while to show their first window. Stops permanently afterwards.</summary>
+    /// <summary>Recheck every 10 seconds for the first 2 minutes after launch, and for as
+    /// long as boot mode lasts — sign-in apps can take minutes to show their first window
+    /// on a busy boot. Stops permanently once both windows have passed.</summary>
     private void StartStartupSweep()
     {
         _startupSweepUntil = DateTime.Now.AddMinutes(2);
@@ -122,7 +123,7 @@ public partial class App : Application
         _startupSweepTimer.Tick += (_, _) =>
         {
             SweepWatchedAppWindows();
-            if (DateTime.Now >= _startupSweepUntil)
+            if (DateTime.Now >= _startupSweepUntil && !WindowWatcher.InBootMode)
             {
                 _startupSweepTimer!.Stop();
                 _startupSweepTimer = null;

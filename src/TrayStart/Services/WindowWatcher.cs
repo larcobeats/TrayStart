@@ -10,6 +10,16 @@ namespace TrayStart.Services;
 /// </summary>
 public class WindowWatcher : IDisposable
 {
+    /// <summary>
+    /// For the first minutes after Windows boots, every watched-app window is autostart
+    /// fallout, not user action — hide unconditionally instead of applying the process-age
+    /// grace check. Apps like TikFinity relaunch through an updater and can take minutes
+    /// to show their first window on a busy sign-in.
+    /// </summary>
+    public static bool InBootMode => Environment.TickCount64 < BootModeMinutes * 60_000L;
+
+    public const int BootModeMinutes = 5;
+
     private readonly SettingsService _settings;
     private readonly TrayMinimizer _minimizer;
 
@@ -91,7 +101,11 @@ public class WindowWatcher : IDisposable
             w.Enabled && string.Equals(w.ExeName, exeName, StringComparison.OrdinalIgnoreCase));
         if (watched == null) return;
 
-        if (!IsWithinGracePeriod(process, pid)) return;
+        // Boot mode bypasses the grace check — unless the user is actively clicking or
+        // typing right now, in which case this window may be one they just opened; defer
+        // to the normal rules (the startup sweep still catches true autostart windows).
+        bool bootModeHide = InBootMode && NativeMethods.SecondsSinceLastInput() > 3;
+        if (!bootModeHide && !IsWithinGracePeriod(process, pid)) return;
 
         _minimizer.MinimizeToTray(hwnd, process, suppressIcon: watched.HasOwnTray);
     }

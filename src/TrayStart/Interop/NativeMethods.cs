@@ -91,6 +91,24 @@ internal static class NativeMethods
     [DllImport("user32.dll", EntryPoint = "GetClassLongPtrW")]
     public static extern IntPtr GetClassLongPtr(IntPtr hWnd, int nIndex);
 
+    [StructLayout(LayoutKind.Sequential)]
+    public struct LASTINPUTINFO
+    {
+        public uint cbSize;
+        public uint dwTime;
+    }
+
+    [DllImport("user32.dll")]
+    public static extern bool GetLastInputInfo(ref LASTINPUTINFO plii);
+
+    public static double SecondsSinceLastInput()
+    {
+        var info = new LASTINPUTINFO { cbSize = (uint)Marshal.SizeOf<LASTINPUTINFO>() };
+        if (!GetLastInputInfo(ref info)) return double.MaxValue;
+        // uint arithmetic handles TickCount wraparound.
+        return ((uint)Environment.TickCount - info.dwTime) / 1000.0;
+    }
+
     public static string GetWindowTitle(IntPtr hwnd)
     {
         int len = GetWindowTextLength(hwnd);
